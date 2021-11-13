@@ -1,3 +1,5 @@
+NB: This branch (small-fixes) merges the work in https://github.com/dorchard/type-level-sets/pull/28, https://github.com/dorchard/type-level-sets/pull/29, and https://github.com/dorchard/type-level-sets/pull/30 into one branch so it can be depended on until those are merged upstream.
+
 This library provides type-level sets and finite maps to Haskell, with value level counterpart, and operations for taking the union, computing
 subsets/submaps, and splitting sets/maps.
 
