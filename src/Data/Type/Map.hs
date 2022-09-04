@@ -2,17 +2,17 @@
 The implementation is similar to that shown in the paper.
  "Embedding effect systems in Haskell" Orchard, Petricek 2014  -}
 
-{-# LANGUAGE TypeOperators, PolyKinds, DataKinds, KindSignatures,
-             TypeFamilies, UndecidableInstances, MultiParamTypeClasses,
+{-# LANGUAGE TypeOperators, PolyKinds, DataKinds,
+             TypeFamilies, UndecidableInstances,
              FlexibleInstances, GADTs, FlexibleContexts, ScopedTypeVariables,
-             ConstraintKinds, IncoherentInstances #-}
+             ConstraintKinds, IncoherentInstances, FunctionalDependencies #-}
 
 module Data.Type.Map (Mapping(..), Union, Unionable, union, append, Var(..), Map(..),
                         ext, empty, mapLength,
                         Combine, Combinable(..), Cmp,
                         Nubable, nub,
                         Lookup, Member, (:\), Split, split,
-                        IsMember, lookp, Updatable, update,
+                        IsMember, lookp, Update, Updatable, update,
                         IsMap, AsMap, asMap,
                         Sortable, quicksort,
                         Submap, submap) where
@@ -92,7 +92,7 @@ mapLength Empty = 0
 mapLength (Ext _ _ xs) = 1 + mapLength xs
 
 {-| Membership test a type class (predicate) -}
-class IsMember v t m where
+class IsMember v t m | m v -> t where
   {-| Value-level lookup of elements from a map, via type class predicate -}
   lookp :: Var v -> Map m -> t
 
@@ -102,25 +102,23 @@ instance {-# OVERLAPS #-} IsMember v t ((v ':-> t) ': m) where
 instance {-# OVERLAPPABLE #-} IsMember v t m => IsMember v t (x ': m) where
   lookp v (Ext _ _ m) = lookp v m
 
+{-| Type level Map update -}
+type family Update v t m where
+  Update v t '[] = '[]
+  Update v t ((v ':-> s) ': xs) = (v ':-> t) ': xs
+  Update v t (x ': xs) = x ': Update v t xs
 
 {-| Updatability as a type class -}
-class Updatable v t m n where
+class Updatable v t m where
   {-| Update a map with `m` at variable `v` with a value of type `t`
       to produce a map of type `n` -}
-  update :: Map m -> Var v -> t -> Map n
+  update :: Map m -> Var v -> t -> Map (Update v t m)
 
-instance {-# OVERLAPS #-} Updatable v t ((v ':-> s) ': m) ((v ':-> t) ': m) where
+instance {-# OVERLAPS #-} Updatable v t ((v ':-> s) ': m) where
   update (Ext v _ m) _ x = Ext v x m
 
-instance Updatable v t m n => Updatable v t ((w ':-> y) ': m) ((w ':-> y) ': n) where
+instance (Updatable v t m, Update v t ((w ':-> y) ': m) ~ ((w ':-> y) ': Update v t m)) => Updatable v t ((w ':-> y) ': m) where
   update (Ext w y m) v x = Ext w y (update m v x)
-
--- instance Updatable v t '[] '[v ':-> t] where
---   update Empty v x = Ext v x Empty
-
-instance Updatable v t s ((v ':-> t) ': s) where
-  update xs v x = Ext v x xs
-
 
 {-| Predicate to check if in normalised map form -}
 type IsMap s = (s ~ Nub (Sort s))
@@ -243,7 +241,7 @@ instance Conder False where
 
 
 {-| Splitting a union of maps, given the maps we want to split it into -}
-class Split s t st where
+class Split s t st | s t -> st where
    -- where st ~ Union s t
    split :: Map st -> (Map s, Map t)
 
