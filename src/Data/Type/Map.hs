@@ -15,7 +15,8 @@ module Data.Type.Map (Mapping(..), Union, Unionable, union, append, Var(..), Map
                         IsMember, lookp, Updatable, update,
                         IsMap, AsMap, asMap,
                         Sortable, quicksort,
-                        Submap, submap) where
+                        Submap, submap,
+                        InsertV(..), ISortable(..)) where
 
 import GHC.TypeLits
 import Data.Type.Bool
