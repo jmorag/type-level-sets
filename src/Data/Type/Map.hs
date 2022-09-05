@@ -20,7 +20,7 @@ module Data.Type.Map (Mapping(..), Union, Unionable, union, append, Var(..), Map
 import GHC.TypeLits
 import Data.Type.Bool
 import Data.Type.Equality
-import Data.Type.Set (Cmp, Proxy(..), Flag(..), Sort, Filter, Filter', (:++))
+import Data.Type.Set (Cmp, Proxy(..), Flag(..), Sort, Filter, Filter', (:++), ISort, Insert, Insert')
 
 {- Throughout, type variables
    'k' ranges over "keys"
@@ -168,6 +168,37 @@ append (Ext k v xs) ys = Ext k v (append xs ys)
 
 type instance Cmp (k :: Symbol) (k' :: Symbol) = CmpSymbol k k'
 type instance Cmp (k :-> v) (k' :-> v') = CmpSymbol k k'
+
+{-| Value-level insertion sort that respects the type-level ordering -}
+class ISortable xs where
+    isort :: Map xs -> Map (ISort xs)
+
+instance ISortable '[] where
+    isort Empty = Empty
+
+instance (ISortable xs, InsertV k v (ISort xs)) => ISortable ((k ':-> v) ': xs) where
+    isort (Ext v x xs) = insertV v x (isort xs)
+
+class InsertV k v xs where
+    insertV :: Var k -> v -> Map xs -> Map (Insert (k ':-> v) xs)
+
+instance InsertV k v '[] where
+    insertV v x Empty = Ext v x Empty
+
+instance InsertV' k v ((k' ':-> y) ': xs) (Cmp k k') => InsertV k v ((k' ':-> y) ': xs) where
+    insertV x rest = insertV' (Proxy :: Proxy (Cmp k k')) x rest
+
+class InsertV' k v xs (cmp :: Ordering) where
+    insertV' :: Proxy cmp -> Var k -> v -> Map xs -> Map (Insert' (k ':-> v) xs cmp)
+
+instance InsertV' k v xs LT where
+    insertV' _ v x set = Ext v x set
+
+instance InsertV k v xs => InsertV' k v ((k' ':-> y) ': xs) EQ where
+    insertV' _ v x (Ext v' y rest) = Ext v' y (insertV v x rest)
+
+instance InsertV k v xs => InsertV' k v ((k' ':-> y) ': xs) GT where
+    insertV' _ v x (Ext v' y rest) = Ext v' y (insertV v x rest)
 
 {-| Value-level quick sort that respects the type-level ordering -}
 class Sortable xs where

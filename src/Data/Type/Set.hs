@@ -7,7 +7,8 @@ module Data.Type.Set (Set(..), Union, Unionable, union, quicksort, append,
                       Sort, Sortable, (:++), Split(..), Cmp, Filter, Filter', Flag(..),
                       Nub, Nubable(..), AsSet, asSet, IsSet, Subset(..),
                       Delete(..), Proxy(..), remove, Remove, (:\),
-                      Elem(..), Member(..), MemberP, NonMember) where
+                      Elem(..), Member(..), MemberP, NonMember,
+                      Insert, Insert', ISort, ISortable, InsertV, iunion) where
 
 import GHC.TypeLits
 import Data.Type.Bool
@@ -81,6 +82,14 @@ union :: (Unionable s t) => Set s -> Set t -> Set (Union s t)
 union s t = nub (quicksort (append s t))
 
 type Unionable s t = (Sortable (s :++ t), Nubable (Sort (s :++ t)))
+
+type IUnion s t = Nub (ISort (s :++ t))
+
+iunion :: (IUnionable s t) => Set s -> Set t -> Set (IUnion s t)
+iunion s t = nub (isort (append s t))
+
+type IUnionable s t = (ISortable (s :++ t), Nubable (ISort (s :++ t)))
+
 
 {-| List append (essentially set disjoint union) -}
 type family (:++) (x :: [k]) (y :: [k]) :: [k] where
@@ -173,6 +182,49 @@ instance {-# OVERLAPPABLE #-} Subset s t => Subset s (x ': t) where
 instance {-# OVERLAPS #-} Subset s t => Subset (x ': s) (x ': t) where
    subset (Ext x xs) = Ext x (subset xs)
 
+{-| Type-level insertion sort for normalising the representation of sets -}
+type family ISort (xs :: [k]) :: [k] where
+            ISort '[] = '[]
+            ISort (x ': xs) = Insert x (ISort xs)
+
+type family Insert (x :: k) (xs :: [k]) :: [k] where
+            Insert x '[] = '[x]
+            Insert x (y ': xs) = Insert' x (y ': xs) (Cmp x y)
+
+type family Insert' (x :: k) (xs :: [k]) cmp :: [k] where
+            Insert' x xs 'LT = x ': xs
+            Insert' x (y ': xs) _ = y ': Insert x xs
+
+{-| Value-level insertion sort that respects the type-level ordering -}
+class ISortable xs where
+    isort :: Set xs -> Set (ISort xs)
+
+instance ISortable '[] where
+    isort Empty = Empty
+
+instance (ISortable xs, InsertV x (ISort xs)) => ISortable (x ': xs) where
+    isort (Ext x xs) = insertV x (isort xs)
+
+class InsertV x xs where
+    insertV :: x -> Set xs -> Set (Insert x xs)
+
+instance InsertV x '[] where
+    insertV x Empty = Ext x Empty
+
+instance InsertV' x (y ': xs) (Cmp x y) => InsertV x (y ': xs) where
+    insertV x rest = insertV' (Proxy :: Proxy (Cmp x y)) x rest
+
+class InsertV' x xs (cmp :: Ordering) where
+    insertV' :: Proxy cmp -> x -> Set xs -> Set (Insert' x xs cmp)
+
+instance InsertV' x xs LT where
+    insertV' _ x set = Ext x set
+
+instance InsertV x xs => InsertV' x (y ': xs) EQ where
+    insertV' _ x (Ext y rest) = Ext y (insertV x rest)
+
+instance InsertV x xs => InsertV' x (y ': xs) GT where
+    insertV' _ x (Ext y rest) = Ext y (insertV x rest)
 
 {-| Type-level quick sort for normalising the representation of sets -}
 type family Sort (xs :: [k]) :: [k] where
@@ -187,15 +239,17 @@ type family Filter (f :: Flag) (p :: k) (xs :: [k]) :: [k] where
 
 type family Filter' (f :: Flag) (p :: k) (x :: k) (xs :: [k]) cmp where
             Filter' FMin p x xs 'LT = x ': Filter FMin p xs
-            Filter' FMin p x xs eqOrGt = Filter FMin p xs
+            Filter' FMin p x xs _ = Filter FMin p xs
             Filter' FMax p x xs 'LT = Filter FMax p xs
-            Filter' FMax p x xs eqOrGt = x ': Filter FMax p xs
+            Filter' FMax p x xs _ = x ': Filter FMax p xs
 
 type family DeleteFromList (e :: elem) (list :: [elem]) where
     DeleteFromList elem '[] = '[]
-    DeleteFromList elem (x ': xs) = If (Cmp elem x == EQ)
-                                       xs
-                                       (x ': DeleteFromList elem xs)
+    DeleteFromList elem (x ': xs) = DeleteFromList' elem (x ': xs) (Cmp elem x)
+
+type family DeleteFromList' e list cmp where
+    DeleteFromList' elem (x ': xs) 'EQ = xs
+    DeleteFromList' elem (x ': xs) _ = x ': DeleteFromList elem xs
 
 type family Delete elem set where
     Delete elem (Set xs) = Set (DeleteFromList elem xs)
